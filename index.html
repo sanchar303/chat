@@ -122,6 +122,21 @@ input {
 body.light input { background: var(--input-bg-light); border-color: rgba(0,0,0,0.2); color: var(--text-light); }
 input:focus { border-color:#7aa8ff; box-shadow:0 0 10px rgba(120,160,255,0.6); outline:none; }
 
+/* Locked name input glow + pulse + cursor hidden */
+input.locked {
+    cursor: none !important;
+    pointer-events: none;
+    color: #ffcc00;
+    background: linear-gradient(90deg, #4444ff22, #ffcc0022);
+    animation: pulseGlow 1.5s infinite alternate;
+    box-shadow: 0 0 12px 3px #ffcc00 inset;
+}
+
+@keyframes pulseGlow {
+    0% { box-shadow: 0 0 8px 2px #ffcc00 inset; }
+    100% { box-shadow: 0 0 18px 6px #ffcc00 inset; }
+}
+
 button#sendBtn {
   flex:0 0 110px; padding:12px; border-radius:10px;
   background: linear-gradient(90deg, #6d83ff, #b47bff);
@@ -152,11 +167,6 @@ button#sendBtn:active { transform: scale(0.95); }
 }
 #olderVersionNote { margin-top:4px; font-size:0.7rem; color:#fff; }
 body.light #olderVersionNote { color:#000; }
-
-input.locked {
-    cursor: default !important;
-    pointer-events: none;
-}
 </style>
 </head>
 <body>
@@ -252,10 +262,10 @@ function sendMessage(){
     push(messagesRef, { name, text, timestamp });
     set(ref(db, `usernames/${name}/${timestamp}`), { text, timestamp });
     msgInput.value="";
-    msgInput.focus(); // keep focus after sending
+    msgInput.focus();
 }
 
-// ---------------- Name lock + highlight + auto focus message ----------------
+// ---------------- Name lock + highlight + auto focus message + glow ----------------
 function setName() {
     if (nameInput.value.trim() === "") return;
     myName = nameInput.value.trim().toLowerCase();
