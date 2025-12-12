@@ -144,6 +144,7 @@ button#sendBtn {
 }
 button#sendBtn:hover { transform: scale(1.1); box-shadow: 0 0 25px rgba(130,140,255,0.7), 0 0 45px rgba(180,120,255,0.3); }
 button#sendBtn:active { transform: scale(0.95); }
+button#sendBtn:disabled { cursor: not-allowed; opacity: 0.5; }
 
 @keyframes fadeIn { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
 
@@ -186,18 +187,18 @@ body.light #olderVersionNote { color:#000; }
     <div id="inputBar">
         <input type="text" id="name" placeholder="username (required)">
         <input type="text" id="message" placeholder="Type a message...">
-        <button id="sendBtn">❯❯❯❯</button>
+        <button id="sendBtn" disabled>❯❯❯❯</button>
     </div>
 </div>
 
 <div id="olderVersionBtnContainer">
-    <a href='https://sancharchat.netlify.app/index1' id='olderVersionBtn' target='_blank'>Try older version</a>
+    <a href='/index1' id='olderVersionBtn' target='_blank'>Try older version</a>
     <div id="olderVersionNote">Contact admin for password</div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-import { getDatabase, ref, push, set, onValue } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
+import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAJBCkrqX2SvE10Rjc3GRO57_aH5AKmjN4",
@@ -221,13 +222,19 @@ const sendBtn = document.getElementById("sendBtn");
 
 let myName = "";
 
-// ------- NEW: username → color -------
-function nameColor(name) {
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-        hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return `hsl(${hash % 360}, 70%, 70%)`;
+// ---------------- BLOCK INVALID CHARS ----------------
+nameInput.addEventListener("input", e => {
+    e.target.value = e.target.value.replace(/[ <>]/g, ""); // block space, <, >
+    updateSendButton();
+});
+msgInput.addEventListener("input", e => {
+    e.target.value = e.target.value.replace(/[<>]/g, ""); // block <, >
+    updateSendButton();
+});
+
+// ---------------- ENABLE/DISABLE SEND ----------------
+function updateSendButton() {
+    sendBtn.disabled = !myName || !msgInput.value.trim();
 }
 
 // ---------------- Retrieve messages ----------------
@@ -265,39 +272,40 @@ onValue(messagesRef, snapshot => {
     msgs.scrollTop = msgs.scrollHeight;
 });
 
+// ---------------- Name color ----------------
+function nameColor(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return `hsl(${hash % 360}, 70%, 70%)`;
+}
+
 // ---------------- Send message ----------------
 function sendMessage(){
-    const name = nameInput.value.trim().toLowerCase();
     const text = msgInput.value.trim();
-    if(!name) return alert("Name required!");
-    if(!text) return;
-    myName = name;
+    if(!text || !myName) return;
     const timestamp = Date.now();
-    push(messagesRef, { name, text, timestamp });
-    set(ref(db, `usernames/${name}/${timestamp}`), { text, timestamp });
-    msgInput.value="";
+    push(messagesRef, { name: myName, text, timestamp });
+    msgInput.value = "";
+    updateSendButton();
     msgInput.focus();
 }
 
 // ---------------- Name lock ----------------
 function setName() {
-    if (nameInput.value.trim() === "") return;
-    myName = nameInput.value.trim().toLowerCase();
+    const name = nameInput.value.trim();
+    if(!name) return;
+    myName = name;
     nameInput.value = myName;
     nameInput.readOnly = true;
     nameInput.classList.add("locked");
-
-    document.querySelectorAll("#messages .bubble").forEach(b => {
-        const meta = b.querySelector(".meta");
-        if (meta && meta.textContent.includes(`— ${myName}`)) b.classList.add("self");
-    });
-
+    updateSendButton();
     msgInput.focus();
 }
 
 nameInput.addEventListener("keyup", e => { if (e.key === "Enter") setName(); });
 nameInput.addEventListener("blur", setName);
-
 msgInput.addEventListener("keyup", e=>{ if(e.key==="Enter") sendMessage(); });
 sendBtn.onclick = sendMessage;
 
@@ -330,10 +338,6 @@ function initParticles(){ particles=[]; for(let i=0;i<80;i++) particles.push(new
 function animate(){ ctx.fillStyle=document.body.classList.contains('light')?"rgba(255,255,255,0.25)":"rgba(16,18,26,0.25)"; ctx.fillRect(0,0,canvas.width,canvas.height); particles.forEach(p=>{p.update();p.draw();}); requestAnimationFrame(animate);}
 initParticles(); animate();
 </script>
-<a href="https://app.netlify.com/">Netlify</a><br>
-<a href="https://www.google.com/">Google</a><br>
-<a href="https://www.google.com/search?q=public+chat+room&oq=public+chat+room">Public Chat Room</a><br>
-<a href="https://moviesjoy.is/home">MoviesJoy</a>
+
 </body>
 </html>
-
