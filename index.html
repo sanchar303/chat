@@ -118,13 +118,12 @@ input {
   border: 1px solid rgba(255,255,255,0.2);
   border-radius:10px; color: inherit; font-size:1rem;
   backdrop-filter: blur(6px); transition:0.25s;
-  caret-color: white;
 }
 body.light input { background: var(--input-bg-light); border-color: rgba(0,0,0,0.2); color: var(--text-light); }
 input:focus { border-color:#7aa8ff; box-shadow:0 0 10px rgba(120,160,255,0.6); outline:none; }
 
 input.locked {
-    cursor: default !important;
+    cursor: none !important;
     pointer-events: none;
     color: #ffcc00;
     background: linear-gradient(90deg, #4444ff22, #ffcc0022);
@@ -147,11 +146,33 @@ button#sendBtn:hover { transform: scale(1.1); box-shadow: 0 0 25px rgba(130,140,
 button#sendBtn:active { transform: scale(0.95); }
 
 @keyframes fadeIn { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
+
+#olderVersionBtnContainer{
+    position: fixed; top: 20px; left: 20px; text-align: center; z-index: 999;
+    font-family: "Segoe UI", sans-serif;
+}
+#olderVersionBtn {
+    display: inline-block; padding:6px 10px; background: linear-gradient(to bottom, #c0c0c0 0%, #808080 100%);
+    color: #000; font-size:0.75rem; font-weight: normal;
+    border:2px solid #fff; border-bottom:2px solid #404040; border-right:2px solid #404040;
+    border-radius:3px; text-decoration:none;
+    box-shadow: inset -1px -1px 0 #fff, inset 1px 1px 0 #404040;
+    transition: all 0.1s ease;
+}
+#olderVersionBtn:active{
+    border-top:2px solid #404040; border-left:2px solid #404040;
+    border-bottom:2px solid #fff; border-right:2px solid #fff;
+    box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #404040;
+}
+#olderVersionNote { margin-top:4px; font-size:0.7rem; color:#fff; }
+body.light #olderVersionNote { color:#000; }
 </style>
 </head>
 <body>
 
 <canvas id="bg"></canvas>
+
+<button id="modeToggle">☀️</button>
 
 <div id="chat-container">
     <div id="header">
@@ -163,15 +184,20 @@ button#sendBtn:active { transform: scale(0.95); }
         <div class="loading">Fetching messages from the database . . .</div>
     </div>
     <div id="inputBar">
-        <input type="text" id="name" placeholder="username (required)" autocomplete="off">
-        <input type="text" id="message" placeholder="Type a message..." autocomplete="off">
+        <input type="text" id="name" placeholder="username (required)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <input type="text" id="message" placeholder="Type a message..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <button id="sendBtn">❯❯❯❯</button>
     </div>
 </div>
 
+<div id="olderVersionBtnContainer">
+    <a href='/index1' id='olderVersionBtn' target='_blank'>Try older version</a>
+    <div id="olderVersionNote">Contact admin for password</div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
+import { getDatabase, ref, push, set, onValue } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAJBCkrqX2SvE10Rjc3GRO57_aH5AKmjN4",
@@ -200,71 +226,49 @@ function sanitize(text) { return text.replace(/[<>]/g, ""); }
 function validateUsername(name) { return name && !name.includes(" ") && !/[<>]/.test(name); }
 function validateMessage(text) { return text && !/[<>]/.test(text); }
 
-// ---------------- Render messages ----------------
-let messagesArray = [];
-function renderMessages() {
+// ---------------- Retrieve messages ----------------
+function renderMessages(snapshot){
     msgs.innerHTML = "";
-    if(messagesArray.length===0) { msgs.innerHTML='<div class="loading">No messages yet…</div>'; return; }
+    if(!snapshot.exists()) { msgs.innerHTML='<div class="loading">No messages yet…</div>'; return; }
 
-    messagesArray.forEach(d=>{
-        const time = new Date(d.timestamp).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
-        const col = nameColor(d.name);
-        const div = document.createElement("div");
-        div.className = "bubble";
-        if(myName && d.name===myName) div.classList.add("self");
-        let html = `<div class="meta">${time} — <span style="color:${col}; font-weight:bold">${d.name}</span></div>
-                    <div class="msg">${d.text}</div>`;
-        if(d.desc && d.desc.trim()!=="") html += `<div class="desc">${d.desc}</div>`;
-        div.innerHTML = html;
-        msgs.appendChild(div);
-    });
-    msgs.scrollTop = msgs.scrollHeight;
-}
-
-onValue(messagesRef, snapshot => {
-    messagesArray = [];
+    const messagesArray=[];
     snapshot.forEach(child=>{
         const val = child.val();
         if(!val) return;
         const ts = val.timestamp ? parseInt(val.timestamp) : Date.now();
         messagesArray.push({name: val.name||"unknown", text: val.text||"", timestamp: ts, desc: val.desc||""});
     });
-    messagesArray.sort((a,b)=> a.timestamp-b.timestamp);
-    renderMessages();
-});
 
-// ---------------- Username color ----------------
+    messagesArray.sort((a,b)=> a.timestamp-b.timestamp);
+
+    messagesArray.forEach(d=>{
+        const time = new Date(d.timestamp).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+        const col = nameColor(d.name);
+
+        const div=document.createElement("div");
+        div.className="bubble";
+        if(d.name===myName) div.classList.add("self");
+
+        let html =
+        `<div class="meta">${time} — <span style="color:${col}; font-weight:bold">${d.name}</span></div>
+         <div class="msg">${d.text}</div>`;
+
+        if(d.desc && d.desc.trim()!=="") html+=`<div class="desc">${d.desc}</div>`;
+
+        div.innerHTML=html;
+        msgs.appendChild(div);
+    });
+    msgs.scrollTop = msgs.scrollHeight;
+}
+
+onValue(messagesRef, snapshot => renderMessages(snapshot));
+
+// ---------------- Name → Color ----------------
 function nameColor(name) {
     let hash = 0;
-    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    for (let i = 0; i < name.length; i++) { hash = name.charCodeAt(i) + ((hash << 5) - hash); }
     return `hsl(${hash % 360}, 70%, 70%)`;
 }
-
-// ---------------- Set username ----------------
-function setName() {
-    let name = sanitize(nameInput.value.trim().toLowerCase()).replace(/\s+/g,"");
-    if (!validateUsername(name)) { nameInput.value = ""; return; }
-    myName = name;
-    nameInput.value = myName;
-    nameInput.readOnly = true;
-    nameInput.classList.add("locked");
-    msgInput.focus();
-    renderMessages(); // highlight all existing messages from user
-}
-
-nameInput.addEventListener("blur", setName);
-nameInput.addEventListener("keydown", e=>{
-    if(e.key==="Enter"){ setName(); msgInput.focus(); }
-});
-nameInput.addEventListener("paste", e=>{
-    e.preventDefault();
-    let paste = (e.clipboardData||window.clipboardData).getData('text');
-    paste = paste.replace(/\s+/g,"").replace(/[<>]/g,"");
-    document.execCommand('insertText', false, paste);
-});
-nameInput.addEventListener("input", e=>{
-    e.target.value = e.target.value.replace(/\s+/g,"").replace(/[<>]/g,"");
-});
 
 // ---------------- Send message ----------------
 function sendMessage(){
@@ -273,26 +277,44 @@ function sendMessage(){
     if(!validateMessage(text)) { msgInput.value=""; return; }
 
     const timestamp = Date.now();
-    push(messagesRef, { name: myName, text, timestamp });
+    
+    const newMsgRef = push(messagesRef);
+    set(newMsgRef, { name: myName, text, timestamp });
+
+    const userRef = ref(db, `usernames/${myName}/${newMsgRef.key}`);
+    set(userRef, { text, timestamp });
+
     msgInput.value="";
 }
 
-msgInput.addEventListener("paste", e=>{
-    e.preventDefault();
-    let paste = (e.clipboardData||window.clipboardData).getData('text');
-    paste = paste.replace(/[<>]/g,"");
-    document.execCommand('insertText', false, paste);
-});
-msgInput.addEventListener("input", e=>{
-    e.target.value = e.target.value.replace(/[<>]/g,"");
-});
+// ---------------- Set Name ----------------
+function setName() {
+    let name = sanitize(nameInput.value.trim().toLowerCase());
+    name = name.replace(/\s+/g, ""); // remove spaces if pasted
+    if(!validateUsername(name)) { nameInput.value=""; return; }
 
-msgInput.addEventListener("keydown", e=>{ if(e.key==="Enter") sendMessage(); });
-sendBtn.addEventListener("click", sendMessage);
+    myName = name;
+    nameInput.value = myName;
+    nameInput.readOnly = true;
+    nameInput.classList.add("locked");
+    msgInput.focus();
+
+    // re-render all messages to apply highlight
+    onValue(messagesRef, snapshot => renderMessages(snapshot));
+}
+
+// ---------------- Events ----------------
+window.addEventListener("load", ()=>{ nameInput.value=""; msgInput.value=""; });
+nameInput.addEventListener("keyup", e => { if(e.key==="Enter") setName(); });
+nameInput.addEventListener("blur", setName);
+nameInput.addEventListener("input", e=>{ e.target.value = e.target.value.replace(/\s/g,"").replace(/[<>]/g,""); });
+msgInput.addEventListener("input", e=>{ e.target.value = e.target.value.replace(/[<>]/g,""); });
+msgInput.addEventListener("keyup", e=>{ if(e.key==="Enter") sendMessage(); });
+sendBtn.onclick = sendMessage;
 
 // ---------------- Light/Dark ----------------
 const toggle=document.getElementById("modeToggle");
-toggle.onclick = ()=>{ document.body.classList.toggle("light"); toggle.textContent = document.body.classList.contains("light")?"🌙":"☀️"; };
+toggle.onclick = ()=>{ document.body.classList.toggle("light"); toggle.textContent=document.body.classList.contains("light")?"🌙":"☀️"; };
 
 // ---------------- Particles ----------------
 const canvas=document.getElementById("bg");
@@ -300,21 +322,11 @@ const ctx=canvas.getContext("2d");
 canvas.width=innerWidth; canvas.height=innerHeight;
 window.addEventListener("resize",()=>{canvas.width=innerWidth;canvas.height=innerHeight;});
 let particles=[];
-class Particle{
-    constructor(){
-        this.x=Math.random()*canvas.width;
-        this.y=Math.random()*canvas.height;
-        this.size=Math.random()*3+0.5;
-        this.speedX=(Math.random()-0.5)*0.6;
-        this.speedY=(Math.random()-0.5)*0.6;
-        this.color=`hsl(${Math.random()*360},80%,${document.body.classList.contains('light')?40:60}%)`;
-    }
-    update(){ this.x+=this.speedX; this.y+=this.speedY; if(this.x<0||this.x>canvas.width) this.speedX*=-1; if(this.y<0||this.y>canvas.height) this.speedY*=-1; }
-    draw(){ ctx.fillStyle=this.color; ctx.beginPath(); ctx.arc(this.x,this.y,this.size,0,Math.PI*2); ctx.fill(); }
-}
+class Particle{ constructor(){ this.x=Math.random()*canvas.width; this.y=Math.random()*canvas.height; this.size=Math.random()*3+0.5; this.speedX=(Math.random()-0.5)*0.6; this.speedY=(Math.random()-0.5)*0.6; this.color=`hsl(${Math.random()*360},80%,${document.body.classList.contains('light')?40:60}%)`; } update(){ this.x+=this.speedX; this.y+=this.speedY; if(this.x<0||this.x>canvas.width) this.speedX*=-1; if(this.y<0||this.y>canvas.height) this.speedY*=-1; } draw(){ ctx.fillStyle=this.color; ctx.beginPath(); ctx.arc(this.x,this.y,this.size,0,Math.PI*2); ctx.fill(); } }
 function initParticles(){ particles=[]; for(let i=0;i<80;i++) particles.push(new Particle()); }
 function animate(){ ctx.fillStyle=document.body.classList.contains('light')?"rgba(255,255,255,0.25)":"rgba(16,18,26,0.25)"; ctx.fillRect(0,0,canvas.width,canvas.height); particles.forEach(p=>{p.update();p.draw();}); requestAnimationFrame(animate);}
 initParticles(); animate();
 </script>
+
 </body>
 </html>
