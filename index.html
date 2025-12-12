@@ -168,7 +168,7 @@ button#sendBtn:active { transform: scale(0.95); }
 body.light #olderVersionNote { color:#000; }
 </style>
 </head>
-<body>
+<body autocomplete="off">
 
 <canvas id="bg"></canvas>
 
@@ -222,91 +222,29 @@ const sendBtn = document.getElementById("sendBtn");
 
 let myName = "";
 
-// ---------------- Validation ----------------
+// ---------------- VALIDATION FUNCTIONS ----------------
 function sanitize(text) {
     return text.replace(/[<>]/g, "");
 }
 
 function validateUsername(name) {
-    return name && !name.includes(" ") && !/[<>]/.test(name);
+    return name && !/[<> ]/.test(name);
 }
 
 function validateMessage(text) {
     return text && !/[<>]/.test(text);
 }
 
-// ---------------- Username Input Handling ----------------
-function setName() {
-    let name = sanitize(nameInput.value.trim().toLowerCase());
-    if (!validateUsername(name)) return;
-
-    myName = name;
-    nameInput.value = myName;
-    nameInput.readOnly = true;
-    nameInput.classList.add("locked");
-
-    updateSendBtn();
-    msgInput.focus();
+function updateSendBtnState() {
+    sendBtn.disabled = myName === "";
 }
 
-function blockInvalidUsernameKeys(e) {
-    if (e.key === " " || e.key === "<" || e.key === ">") e.preventDefault();
-}
+// Clear inputs on load
+nameInput.value = "";
+msgInput.value = "";
+updateSendBtnState();
 
-function sanitizeUsernamePaste(e) {
-    e.preventDefault();
-    let text = (e.clipboardData || window.clipboardData).getData('text');
-    text = text.replace(/ /g,"").replace(/[<>]/g,"");
-    document.execCommand("insertText", false, text);
-}
-
-nameInput.addEventListener("keydown", blockInvalidUsernameKeys);
-nameInput.addEventListener("paste", sanitizeUsernamePaste);
-nameInput.addEventListener("keyup", e => { if(e.key==="Enter") setName(); });
-nameInput.addEventListener("blur", setName);
-
-// ---------------- Message Input Handling ----------------
-function blockInvalidMessageKeys(e) {
-    if (e.key === "<" || e.key === ">") e.preventDefault();
-}
-
-function sanitizeMessagePaste(e) {
-    e.preventDefault();
-    let text = (e.clipboardData || window.clipboardData).getData('text');
-    text = text.replace(/[<>]/g,"");
-    document.execCommand("insertText", false, text);
-}
-
-msgInput.addEventListener("keydown", blockInvalidMessageKeys);
-msgInput.addEventListener("paste", sanitizeMessagePaste);
-msgInput.addEventListener("keyup", e=>{ if(e.key==="Enter") sendMessage(); });
-
-// ---------------- Send Message ----------------
-function updateSendBtn() {
-    sendBtn.disabled = !validateUsername(myName);
-}
-
-function sendMessage(){
-    let name = myName;
-    let text = sanitize(msgInput.value.trim());
-
-    if(!validateUsername(name) || !validateMessage(text)) return;
-
-    const timestamp = Date.now();
-
-    // Store in messages
-    push(messagesRef, { name, text, timestamp });
-
-    // Store under usernames
-    push(ref(db, "usernames/" + name), { text, timestamp });
-
-    msgInput.value="";
-    msgInput.focus();
-}
-
-sendBtn.onclick = sendMessage;
-
-// ---------------- Retrieve Messages ----------------
+// ---------------- Retrieve messages ----------------
 onValue(messagesRef, snapshot => {
     msgs.innerHTML = "";
     if(!snapshot.exists()) { msgs.innerHTML='<div class="loading">No messages yet…</div>'; return; }
@@ -316,7 +254,12 @@ onValue(messagesRef, snapshot => {
         const val = child.val();
         if(!val) return;
         const ts = val.timestamp ? parseInt(val.timestamp) : Date.now();
-        messagesArray.push({name: val.name||"unknown", text: val.text||"", timestamp: ts});
+        messagesArray.push({
+            name: val.name||"unknown",
+            text: val.text||"",
+            timestamp: ts,
+            desc: val.desc||""
+        });
     });
 
     messagesArray.sort((a,b)=> a.timestamp-b.timestamp);
@@ -333,22 +276,84 @@ onValue(messagesRef, snapshot => {
         `<div class="meta">${time} — <span style="color:${col}; font-weight:bold">${d.name}</span></div>
          <div class="msg">${d.text}</div>`;
 
-        div.innerHTML=html;
+        if(d.desc && d.desc.trim() !== "") html += `<div class="desc">${d.desc}</div>`;
+
+        div.innerHTML = html;
         msgs.appendChild(div);
     });
     msgs.scrollTop = msgs.scrollHeight;
 });
 
-// ---------------- Username color ----------------
+// ------- Username color -------
 function nameColor(name) {
     let hash = 0;
-    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
     return `hsl(${hash % 360}, 70%, 70%)`;
 }
 
+// ---------------- Send message ----------------
+function sendMessage() {
+    if(myName === "") return;
+
+    let text = sanitize(msgInput.value.trim());
+    if(!validateMessage(text)) return;
+
+    const timestamp = Date.now();
+    const safeName = sanitize(myName);
+
+    push(messagesRef, { name: safeName, text, timestamp });
+
+    const userRef = ref(db, `usernames/${safeName}`);
+    const newMsgRef = push(userRef);
+    set(newMsgRef, { text, timestamp });
+
+    msgInput.value="";
+    msgInput.focus();
+}
+
+// ---------------- Name lock ----------------
+function setName() {
+    let name = sanitize(nameInput.value.trim().toLowerCase());
+    if(!validateUsername(name)) return;
+
+    myName = name;
+    nameInput.value = myName;
+    nameInput.readOnly = true;
+    nameInput.classList.add("locked");
+
+    msgInput.focus();
+    updateSendBtnState();
+}
+
+// ---------------- Input restrictions ----------------
+nameInput.addEventListener("keypress", e => {
+    if(e.key === " " || e.key === "<" || e.key === ">") e.preventDefault();
+});
+nameInput.addEventListener("paste", e => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/[<> ]/g,"");
+    document.execCommand("insertText", false, pasted);
+});
+msgInput.addEventListener("keypress", e => {
+    if(e.key === "<" || e.key === ">") e.preventDefault();
+});
+msgInput.addEventListener("paste", e => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/[<>]/g,"");
+    document.execCommand("insertText", false, pasted);
+});
+
+nameInput.addEventListener("keyup", e => { if(e.key==="Enter") setName(); });
+nameInput.addEventListener("blur", setName);
+
+msgInput.addEventListener("keyup", e=>{ if(e.key==="Enter") sendMessage(); });
+sendBtn.onclick = sendMessage;
+
 // ---------------- Light/Dark ----------------
 const toggle=document.getElementById("modeToggle");
-toggle.onclick = ()=>{
+toggle.onclick = ()=> {
     document.body.classList.toggle("light");
     toggle.textContent = document.body.classList.contains("light")?"🌙":"☀️";
 };
@@ -374,14 +379,6 @@ class Particle{
 function initParticles(){ particles=[]; for(let i=0;i<80;i++) particles.push(new Particle()); }
 function animate(){ ctx.fillStyle=document.body.classList.contains('light')?"rgba(255,255,255,0.25)":"rgba(16,18,26,0.25)"; ctx.fillRect(0,0,canvas.width,canvas.height); particles.forEach(p=>{p.update();p.draw();}); requestAnimationFrame(animate);}
 initParticles(); animate();
-
-// ---------------- Clear fields on load ----------------
-window.onload = () => {
-    nameInput.value = "";
-    msgInput.value = "";
-    myName = "";
-    updateSendBtn();
-};
 </script>
 
 </body>
